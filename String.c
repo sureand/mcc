@@ -2,11 +2,6 @@
 
 #define MIN_SIZE 8
 
-static int max(int a, int b)
-{
-    return a > b ? a : b;
-}
-
 static int roundup(int n) {
     if (n == 0)
         return 0;
