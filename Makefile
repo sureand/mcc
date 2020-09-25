@@ -8,4 +8,4 @@ mcc: mcc.h main.o $(OBJS)
 $(OBJS) main.o: mcc.h
 
 clean:
-	rm *.o
+	rm *.o mcc
