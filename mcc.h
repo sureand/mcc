@@ -4,6 +4,8 @@
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
+#include <stdarg.h>
+#include <ctype.h>
 
 #ifndef BOOL
 #define BOOL unsigned char
@@ -199,7 +201,7 @@ struct Token
 
 struct Dict {
     struct Map *map;
-    struct Vector *key;
+    struct Buffer *key;
 };
 
 struct TYPE
@@ -332,6 +334,12 @@ struct Node {
 struct TYPE *make_type();
 struct Node *make_node();
 
+//map
+struct Map *make_map();
+void *map_get(struct Map *m, char *key);
+void map_put(struct Map *m, char *key, void *val);
+struct Map *make_map_parent(struct Map *parent);
+
 //File
 char get_char();
 void unget_char(char c);
@@ -376,6 +384,7 @@ size_t buffer_len(struct Buffer *buf);
 
 //parse
 struct Node *read_expr();
+int max(int a, int b);
 struct Node *read_stmt_expr();
 struct Node *read_cast_expr();
 struct TYPE *read_decl_specifier();
@@ -402,16 +411,11 @@ struct Node *read_break_expr();
 struct TYPE *read_declaretor_tail(struct TYPE *base_ty, int state);
 struct TYPE *read_enum_fields(struct TYPE **type_ptr);
 struct Buffer *read_decl_init(struct TYPE *ty);
+struct Node *make_unary_node(int id, struct TYPE *ty, struct Node *operand);
 
 //error
 void error_warn(const char *fmt, ...);
 void error_force(const char *fmt, ...);
-
-//map
-struct Map *make_map();
-void *map_get(struct Map *m, char *key);
-void map_put(struct Map *m, char *key, void *val);
-struct Map *make_map_parent(struct Map *parent);
 
 //dict
 struct Dict *make_dict();

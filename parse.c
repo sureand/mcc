@@ -15,6 +15,11 @@ struct Buffer *local_vars = NULL;
 struct TYPE *func_type = NULL;
 struct Map *local_labels = NULL;
 
+int max(int a, int b)
+{
+    return a > b ? a : b;
+}
+
 struct Map *env()
 {
     return global_env ? global_env : local_env;
@@ -33,7 +38,7 @@ struct Map *set_env(struct Map *e)
 
 void *is_in_tags(const char *field)
 {
-    return map_get(tags, field);
+    return map_get(tags, (char*)field);
 }
 
 void put_tag(const char *field, void *data)
@@ -110,11 +115,6 @@ static struct TYPE *make_int_type()
     return make_base_type(KIND_INTEGER, 4, 4, FALSE);
 }
 
-static struct TYPE *make_long_type(struct TYPE *ty, int len)
-{
-    return make_base_type(KIND_CHAR, 1, 1, FALSE);
-}
-
 static struct TYPE *make_char_type()
 {
     return make_base_type(KIND_CHAR, 1, 1, FALSE);
@@ -123,6 +123,24 @@ static struct TYPE *make_char_type()
 static struct TYPE *make_double_type()
 {
     return make_base_type(KIND_CHAR, 8, 8, FALSE);
+}
+
+struct TYPE *make_string_type()
+{
+    struct TYPE *ty = make_type();
+    ty->kind = KIND_STRING;
+
+    return ty;
+}
+
+struct TYPE *make_enum_type()
+{
+    struct TYPE *ty = make_type();
+    ty->kind = KIND_INTEGER;
+    ty->size = 4;
+    ty->align = 4;
+
+    return ty;
 }
 
 static struct TYPE *make_temp_type() 
@@ -153,6 +171,17 @@ struct TYPE *make_union_type()
     ty->fields = make_dict();
 
     return ty;
+}
+
+struct Node *make_unary_node(int id, struct TYPE *ty, struct Node *operand)
+{
+    struct Node *node = make_node();
+    node->kind = AST_UNARY;
+    node->ty = ty;
+    node->id = id;
+    node->operand = operand;
+
+    return node;
 }
 
 struct Node *make_deref_node(struct TYPE *ty, struct Node *operand)
@@ -260,7 +289,7 @@ struct Node *read_decimal(const char *number)
         return make_float_node(make_double_type(), sum);
     }
 
-    return make_int_node(make_int_type(), sum);
+    return make_int_node(make_int_type(), (long)sum);
 }
 
 struct Node *read_hex(const char *number)
@@ -319,24 +348,6 @@ struct Node *read_char_node(int c)
     return node;
 }
 
-struct TYPE *make_string_type()
-{
-    struct TYPE *ty = make_type();
-    ty->kind = KIND_STRING;
-
-    return ty;
-}
-
-struct TYPE *make_enum_type()
-{
-    struct TYPE *ty = make_type();
-    ty->kind = KIND_INTEGER;
-    ty->size = 4;
-    ty->align = 4;
-
-    return ty;
-}
-
 struct Node *make_const_ident(struct TYPE *ty, const char *name)
 {
     struct Node *node = make_node();
@@ -371,17 +382,6 @@ struct Node *make_ident_node(struct TYPE *ty, const char *name)
     node->ty = ty;
 
    return node;
-}
-
-struct Node *make_unary_node(int id, struct TYPE *ty, struct Node *operand)
-{
-    struct Node *node = make_node();
-    node->kind = AST_UNARY;
-    node->ty = ty;
-    node->id = id;
-    node->operand = operand;
-
-    return node;
 }
 
 struct Node *make_struct_ref_node(struct Node *struc, const char *name)
@@ -1567,9 +1567,9 @@ BOOL isfunc()
     return state;
 }
 
-BOOL isstorage(int kind)
+BOOL isstorage(int id)
 {
-   return (kind >= KEYWORD_REGISTER && kind <= KEYWORD_AUTO);
+   return (id >= KEYWORD_REGISTER && id <= KEYWORD_AUTO);
 }
 
 int eval(struct Node *node)
@@ -2202,7 +2202,26 @@ struct TYPE *read_enum_fields(struct TYPE **type_ptr)
     return *type_ptr;
 }
 
-BOOL is_KIND_specifier(struct Token *tok)
+BOOL is_kind_qualifier(struct Token *tok)
+{
+    if(tok->kind != KIND_KEYWORD) {
+        return FALSE;
+    }
+
+    switch (tok->id)
+    {
+        case KEYWORD_CONST:
+        case KEYWORD_VOLATILE:
+        case KEYWORD_AUTO:
+            return TRUE;
+    default:
+        break;
+    }
+
+    return FALSE;
+}
+
+BOOL is_kind_specifier(struct Token *tok)
 {
     if(tok->kind == KIND_STRING) {
         return TRUE;
@@ -2271,7 +2290,7 @@ struct TYPE *read_decl_specifier()
             }
 
             //void float double 等类型，不允许出现signed 或者 unsigned
-            if(ty->kind == KEYWORD_FLOAT || ty->kind == KEYWORD_DOUBLE || ty->kind == KEYWORD_VOID) {
+            if(iskeyword(tok, KEYWORD_FLOAT) || iskeyword(tok, KEYWORD_DOUBLE)|| iskeyword(tok, KEYWORD_VOID)) {
                 if(sig != 0) {
                     error_force("unexpected signed or unsigned\n");
                 }
@@ -2303,7 +2322,7 @@ struct TYPE *read_decl_specifier()
             continue;
         }
 
-        if(tok->kind == KIND_KEYWORD && is_KIND_qualifier(tok->id))
+        if(tok->kind == KIND_KEYWORD && is_kind_qualifier(tok))
         {
             //同一个变量声明中，所有的类型限定符以第一个为准，后面的直接忽略!
             //保存当前的类型限定!
@@ -2311,7 +2330,7 @@ struct TYPE *read_decl_specifier()
                 ty->kind_qualiter = tok->kind;
             }
 
-            while(tok->kind == KIND_KEYWORD && is_KIND_qualifier(tok->kind)) {
+            while(tok->kind == KIND_KEYWORD && is_kind_qualifier(tok)) {
                 tok = get_token();
             }
 
@@ -2319,7 +2338,7 @@ struct TYPE *read_decl_specifier()
         }
 
         //类型读出来后，直接返回.
-        if(is_KIND_specifier(tok))
+        if(is_kind_specifier(tok))
         {
             //只能出现一次类型声明!
             if(ty->kind != 0) {
@@ -2379,11 +2398,11 @@ struct TYPE *read_declaretor(struct TYPE *base_ty, char **ident_name, int state)
     struct Token *tok = get_token();
 
     //跳过所有的类型限定符，存在多个的时候以第一个为准.
-    if(is_KIND_qualifier(tok->kind)) {
+    if(is_kind_qualifier(tok)) {
 
         base_ty->kind_qualiter = tok->kind;
 
-        while(is_KIND_qualifier(tok->kind)) {
+        while(is_kind_qualifier(tok)) {
             tok = get_token();
         }
         unget_token(tok);
@@ -2535,6 +2554,8 @@ struct Node *read_func_body(const char *fname)
     local_env = NULL;
 
     local_labels = NULL;
+
+    return body;
 }
 
 void check_params(struct Buffer *params1, struct Buffer *params2)
@@ -2576,7 +2597,7 @@ struct TYPE *read_func_type(char **fname)
 
     struct TYPE *ftype = read_declaretor(base_ty, fname, DECL_DEFAULT);
 
-    struct Node *node = map_get(global_env, fname);
+    struct Node *node = map_get(global_env, *fname);
     if(node) {
 
         //类型定义不一致

@@ -3,7 +3,7 @@
 struct Dict *make_dict() {
     struct Dict *r = malloc(sizeof(struct Dict));
     r->map = make_map();
-    r->key = make_vector();
+    r->key = make_buffer();
     return r;
 }
 

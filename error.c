@@ -18,7 +18,7 @@ static void error_level(const char *level, const char *fmt, va_list args)
 {
     struct POS *pos = get_pos();
 
-    fprintf(stderr, "%s:%d:%d %s: ", pos->filename, pos->line, pos->column, level);
+    fprintf(stderr, "%s:%ld:%ld %s: ", pos->filename, pos->line, pos->column, level);
 
     error_t(fmt, args);
 }
@@ -27,7 +27,7 @@ static warn_level(const char *level, const char *fmt, va_list args)
 {
     struct POS *pos = get_pos();
 
-    fprintf(stderr, "%s:%d:%d %s: ", pos->filename, pos->line, pos->column, level);
+    fprintf(stderr, "%s:%ld:%ld %s: ", pos->filename, pos->line, pos->column, level);
 
     warn_t(fmt, args);
 }
