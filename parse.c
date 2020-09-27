@@ -638,7 +638,7 @@ struct Node *read_primary_exp()
 
         case KIND_KEYWORD: {
             if(iskeyword(tok, '+') || iskeyword(tok, '-')) {
-                struct Token *tok1 = get_token();
+                struct Token *tok1 = peek_token();
                 if(tok1->kind != KIND_NUMBER) {
                     error_force("expect number, but got: %s", tok1->token_string);
                 }
@@ -1106,7 +1106,11 @@ struct Node *read_if_expr()
 struct Node *read_boolean_expr()
 {
     struct Node *node = read_expr();
-    //TODO:
+    if(!node) {
+        error_force("expect a expression, but got null");
+    }
+
+    //TODO:浮点型需要转换吗
     if(node->ty->kind == KIND_FLOAT) {
         return FALSE;
     }
@@ -1426,7 +1430,6 @@ struct Node *read_stmt_expr()
     struct Token *tok = get_token();
 
     if(tok->kind == KIND_KEYWORD) {
-
         switch(tok->id) {
             case KEYWORD_GOTO: 
                 return read_goto_expr();
@@ -1884,9 +1887,7 @@ struct TYPE *read_struct_union_def(struct TYPE **type_ptr, struct Buffer *fields
 
             buffer_push(fields, make_pair(field_name, ty));
 
-            if(next_token(',')) {
-                continue;
-            }
+            //TODO: 需要把类型是函数的成员转成函数指针
 
             //读完后，开始校验类型是否合法。
             if(base_ty->kind == KEYWORD_STRUCT || base_ty->kind == KEYWORD_UNION) {
@@ -1894,6 +1895,10 @@ struct TYPE *read_struct_union_def(struct TYPE **type_ptr, struct Buffer *fields
                 if(tk->size == -1) {
                     error_force("incomplete type: %s", base_ty->type_name);
                 }
+            }
+
+            if(next_token(',')) {
+                continue;
             }
 
             if(next_token(';')) {
@@ -2213,6 +2218,7 @@ BOOL is_kind_qualifier(struct Token *tok)
         case KEYWORD_CONST:
         case KEYWORD_VOLATILE:
         case KEYWORD_AUTO:
+        case KEYWORD_RESTRICT:
             return TRUE;
     default:
         break;
@@ -2433,25 +2439,64 @@ struct TYPE *read_declaretor(struct TYPE *base_ty, char **ident_name, int state)
 }
 
 //TODO: c99 has not finshed!
-struct Buffer *read_array_init(struct TYPE *ty, struct Buffer *list)
+struct Buffer *read_array_init(struct TYPE *ty, struct Buffer *list, int off, int designated)
 {
-    if(next_token('}')) {
-        return list;
+
+    BOOL has_brace = FALSE;
+    if(next_token('{')) {
+        has_brace = TRUE;
     }
 
+    struct Token *tok = NULL;
+    size_t i = 0;
+    size_t pos;
+
+    //FIXME: 有可能会读到很多数据.
     for(;;) {
 
-        buffer_push(list, read_decl_init(ty));
+        tok = get_token();
 
-        if(next_token(',')) {
-            continue;
+        //假如是遇到 }, 那么可能是当前的 }， 也有可能是上一层的.
+        if(iskeyword(tok, '}')) {
+            if(!has_brace) {
+                unget_token(tok);
+            }
         }
 
-        if(next_token('}')) {
-            break;
+        //假如遇到的是[ 或者 . 但是当前不是指定初始化，而且不是被{} 包含的话， 那么意味着读到上一层的数据了
+        //出现[ 有可能是, 上一层是一个数组，因此这里是读到上一层的指定初始化了
+        //读到. 的时候，意味着可能是访问的 结构体的成员是数组，并且采用指定初始化的方式，因此 . 也有可能是结构体的下一个成员的
+        // 初始化过程， 也要判断并且返回
+        if((iskeyword(tok, '[') || iskeyword(tok, '.')) && !has_brace && !designated) {
+            unget_token(tok);
+            return;
         }
+
+        if(iskeyword(tok, '[')) {
+
+            //这里仅仅是常量表达式指定初始化，不支持指定范围初始化
+            int idx = read_interpreter_expr();
+            if(idx <= 0 || idx > ty->len) {
+                error_force("out of range of array!");
+            }
+
+            i = idx;
+
+            expect(']');
+
+            designated = TRUE;
+        }
+
+        //read_init_list();
         
-        error_force("unexpected token: %s", get_token()->token_string);
+
+        //有可能是, 读完它
+        next_token(',');
+
+        designated = FALSE;
+
+        ++i, ++pos;
+
     }
 
     return list;
